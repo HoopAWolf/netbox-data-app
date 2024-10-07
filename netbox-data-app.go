@@ -42,7 +42,7 @@ func buildRows() []*imgui.TableRowWidget {
 			}
 		}
 
-		rows = make([]*imgui.TableRowWidget,  total + 1)
+		rows = make([]*imgui.TableRowWidget, total+1)
 
 		rows[0] = imgui.TableRow(
 			imgui.Label(headers[0]),
@@ -77,6 +77,10 @@ func buildRows() []*imgui.TableRowWidget {
 
 				if strings.Contains(tenant, "nil") {
 					tenant = "Nil"
+				} else {
+					tenant = strings.Trim(tenant, "map[%!d(string=description):%!d(string=) %!d(string=display):%!d(string=) %!d(string=id):%!d(float64=5) %!d(string=name):%!d(string=) %!d(string=slug):%!d(string=dunder-mifflin) %!d(string=url):%!d(string=https://demo.netbox.dev/api/tenancy/tenants/5/)]")
+					temp := strings.Split(tenant, ")")
+					tenant = temp[0]
 				}
 
 				if strings.Contains(assigned, "true") {
@@ -91,7 +95,7 @@ func buildRows() []*imgui.TableRowWidget {
 				} else {
 					dnsName = "Nil"
 				}
-				
+
 				rows[i] = imgui.TableRow(
 					imgui.Label(id),
 					imgui.Label(ip.Address),
@@ -172,7 +176,7 @@ func loop() {
 
 func main() {
 	ctx = context.Background()
-	apiClient = openapiclient.NewAPIClientFor("https://demo.netbox.dev", "460d54553cfa8e27c6aa4b3e47710dbd5aa788ae")
+	apiClient = openapiclient.NewAPIClientFor("https://demo.netbox.dev", "68133df7af9e0a017c4661678ec1c2f72590be03")
 	resp, r, err := apiClient.StatusAPI.StatusRetrieve(ctx).Execute()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error when calling `StatusAPI.StatusRetrieve``: %v\n", err)
