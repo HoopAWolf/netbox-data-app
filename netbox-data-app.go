@@ -16,18 +16,26 @@ import (
 var apiClient *openapiclient.APIClient
 var ctx context.Context
 var rows []*imgui.TableRowWidget
-var timer float32 = 0.0
+var timer float32 = 10.0
 var showEnterIPAddressWindow bool = false
+var showLoggedIn bool = false
+var loggedIn bool = false
 var inputIPAddressString string
 var inputIPAddressDesc string
+var inputIPAddressDNSName string = ""
 var inputIPAddressToSearchString string = ""
+var inputDomainLogIn string = "https://demo.netbox.dev"
+var inputAPITokenLogIn string = ""
 
 func buildRows() []*imgui.TableRowWidget {
-	timer -= 0.1
+	if !showEnterIPAddressWindow && loggedIn {
+		timer -= 0.1
+	}
+
 	if timer <= 0.0 {
 
 		// Fetch all IP addresses
-		availableIPs, _, err := apiClient.IpamAPI.IpamIpAddressesList(ctx).Limit(300).Execute()
+		availableIPs, _, err := apiClient.IpamAPI.IpamIpAddressesList(ctx).Limit(6000).Execute()
 
 		if err != nil {
 			log.Fatal(err)
@@ -121,9 +129,10 @@ func addIPAddressConfirmation() {
 			statusOfNewIP := openapiclient.PATCHEDWRITABLEIPADDRESSREQUESTSTATUS_ACTIVE
 
 			ipAddressRequest := openapiclient.WritableIPAddressRequest{
-				Address:     inputIPAddressString, // IP address with CIDR notation
-				Status:      &statusOfNewIP,       // Status of the IP address
-				Description: &inputIPAddressDesc,  // Optional description
+				Address:     inputIPAddressString,   // IP address with CIDR notation
+				Status:      &statusOfNewIP,         // Status of the IP address
+				DnsName:     &inputIPAddressDNSName, //DNS name
+				Description: &inputIPAddressDesc,    // Optional description
 			}
 
 			resp, _, _ := apiClient.IpamAPI.IpamIpAddressesCreate(context.Background()).WritableIPAddressRequest(ipAddressRequest).Execute()
@@ -137,14 +146,41 @@ func addIPAddressConfirmation() {
 	})
 }
 
+func logIn() {
+	apiClient = openapiclient.NewAPIClientFor(inputDomainLogIn, inputAPITokenLogIn)
+	//apiClient = openapiclient.NewAPIClientFor("https://netbox.cit.insea.io", "e3d318664caba8355bcea30a00237ae38c02b357")
+	resp, _, err := apiClient.StatusAPI.StatusRetrieve(ctx).Execute()
+	if err == nil {
+		loggedIn = true
+		showLoggedIn = false
+		resetRefreshTimer()
+	}
+	// response from `StatusRetrieve`: map[string]interface{}
+	fmt.Fprintf(os.Stdout, "Response from `StatusAPI.StatusRetrieve`: %v\n", resp)
+}
+
 func resetRefreshTimer() {
 	timer = 0.0
+}
+
+func checkSubnet() {
+	subnetList, _, err := apiClient.IpamAPI.IpamPrefixesList(context.Background()).Limit(1000).Execute()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error fetching subnets: %v\n", err)
+		return
+	}
+
+	for _, subnet := range subnetList.Results {
+		fmt.Printf("Allocated Subnet: %s\n", subnet.Prefix)
+	}
 }
 
 func loop() {
 	imgui.MainMenuBar().Layout(
 		imgui.Menu("File").Layout(
-			imgui.MenuItem("Open"),
+			imgui.MenuItem("Open").OnClick(func() {
+				showLoggedIn = true
+			}),
 			imgui.Separator(),
 			imgui.MenuItem("Exit"),
 		),
@@ -153,9 +189,13 @@ func loop() {
 	imgui.SingleWindow().Layout(
 		imgui.PrepareMsgbox(),
 		imgui.Row(
+			imgui.Button("Log In").OnClick(func() {
+				showLoggedIn = true
+			}),
 			imgui.Button("Add New IP Address").OnClick(func() {
 				showEnterIPAddressWindow = true
 			}),
+			imgui.Button("Check Subnet Used").OnClick(checkSubnet),
 			imgui.Button("Refresh IP Address List").OnClick(resetRefreshTimer),
 			imgui.InputText(&inputIPAddressToSearchString).Label("Input IP Address To Search").Size(300),
 		),
@@ -165,9 +205,18 @@ func loop() {
 		),
 	)
 
+	if showLoggedIn {
+		imgui.Window("Log In Window").IsOpen(&showLoggedIn).Flags(imgui.WindowFlagsNone).Layout(
+			imgui.InputText(&inputDomainLogIn).Label("Input Domain Address").Size(300),
+			imgui.InputText(&inputAPITokenLogIn).Label("Input API Token").Size(300),
+			imgui.Button("Log In").OnClick(logIn),
+		)
+	}
+
 	if showEnterIPAddressWindow {
 		imgui.Window("IPAddress Input Window").IsOpen(&showEnterIPAddressWindow).Flags(imgui.WindowFlagsNone).Layout(
 			imgui.InputText(&inputIPAddressString).Label("Input IP Address").Size(300),
+			imgui.InputText(&inputIPAddressDNSName).Label("Input DNS Name").Size(300),
 			imgui.InputText(&inputIPAddressDesc).Label("Input Desceiption").Size(700),
 			imgui.Button("Add IP Address").OnClick(addIPAddressConfirmation),
 		)
@@ -176,14 +225,6 @@ func loop() {
 
 func main() {
 	ctx = context.Background()
-	apiClient = openapiclient.NewAPIClientFor("https://demo.netbox.dev", "68133df7af9e0a017c4661678ec1c2f72590be03")
-	resp, r, err := apiClient.StatusAPI.StatusRetrieve(ctx).Execute()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error when calling `StatusAPI.StatusRetrieve``: %v\n", err)
-		fmt.Fprintf(os.Stderr, "Full HTTP response: %v\n", r)
-	}
-	// response from `StatusRetrieve`: map[string]interface{}
-	fmt.Fprintf(os.Stdout, "Response from `StatusAPI.StatusRetrieve`: %v\n", resp)
 	wnd := imgui.NewMasterWindow("IP Storage System", 1280, 720, imgui.MasterWindowFlagsFloating)
 	wnd.Run(loop)
 }
