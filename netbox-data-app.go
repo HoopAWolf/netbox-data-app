@@ -108,7 +108,7 @@ var ctx context.Context
 var rows []*imgui.TableRowWidget
 var timer float32 = 10.0
 var showEnterIPAddressWindow bool = false
-var showLoggedIn bool = false
+var showLoggedIn bool = true
 var loggedIn bool = false
 var inputIPAddressString string
 var inputIPAddressDesc string
@@ -116,6 +116,7 @@ var inputIPAddressDNSName string = ""
 var inputIPAddressToSearchString string = ""
 var inputDomainLogIn string = "https://demo.netbox.dev"
 var inputAPITokenLogIn string = ""
+var listOfRoles []string = make([]string, 0)
 
 func buildRows() []*imgui.TableRowWidget {
 	if !showEnterIPAddressWindow && loggedIn {
@@ -131,7 +132,7 @@ func buildRows() []*imgui.TableRowWidget {
 			log.Fatal(err)
 		}
 		// Set headers
-		headers := []string{"ID", "Address", "Status", "Tenant", "Assigned", "DNS Name"}
+		headers := []string{"ID", "Address", "Role", "Status", "Tenant", "Assigned", "DNS Name"}
 
 		var total = 0
 		for _, ip := range availableIPs.Results {
@@ -149,6 +150,7 @@ func buildRows() []*imgui.TableRowWidget {
 			imgui.Label(headers[3]),
 			imgui.Label(headers[4]),
 			imgui.Label(headers[5]),
+			imgui.Label(headers[6]),
 		)
 
 		rows[0].BgColor(&(color.RGBA{200, 100, 100, 255}))
@@ -164,6 +166,7 @@ func buildRows() []*imgui.TableRowWidget {
 				tenant := fmt.Sprintf("%d", ipData[`tenant`])
 				assigned := fmt.Sprintf("%d", ipData[`assigned_object`])
 				dnsName := fmt.Sprintf("%d", ipData[`dns_name`])
+				roleName := fmt.Sprintf("%d", ipData[`role`])
 
 				if strings.Contains(status, "Active") {
 					status = "Active"
@@ -179,6 +182,26 @@ func buildRows() []*imgui.TableRowWidget {
 					tenant = strings.Trim(tenant, "map[%!d(string=description):%!d(string=) %!d(string=display):%!d(string=) %!d(string=id):%!d(float64=5) %!d(string=name):%!d(string=) %!d(string=slug):%!d(string=dunder-mifflin) %!d(string=url):%!d(string=https://demo.netbox.dev/api/tenancy/tenants/5/)]")
 					temp := strings.Split(tenant, ")")
 					tenant = temp[0]
+				}
+
+				if strings.Contains(roleName, "nil") {
+					roleName = "Nil"
+				} else {
+					roleName = strings.Trim(roleName, "map[%!d(string=label):%!d(string=) %!d(string=value):%!d(string=)]")
+					temp := strings.Split(roleName, ")")
+					roleName = temp[0]
+
+					var hasFound bool = false
+					for _, role := range listOfRoles {
+						if role == roleName {
+							hasFound = true
+							break
+						}
+					}
+
+					if !hasFound {
+						listOfRoles = append(listOfRoles, roleName)
+					}
 				}
 
 				if strings.Contains(assigned, "true") {
@@ -197,6 +220,7 @@ func buildRows() []*imgui.TableRowWidget {
 				rows[i] = imgui.TableRow(
 					imgui.Label(id),
 					imgui.Label(ip.Address),
+					imgui.Label(roleName),
 					imgui.Label(status),
 					imgui.Label(tenant),
 					imgui.Label(assigned),
@@ -282,9 +306,6 @@ func checkSubnet() {
 		return
 	}
 
-	// Print the response (list of prefixes)
-	fmt.Println(string(body))
-
 	var apiResponse ApiResponse
 
 	// Unmarshal JSON data
@@ -337,6 +358,12 @@ func checkSubnet() {
 	fmt.Println("Excel file created successfully: prefixes.xlsx")
 }
 
+func getRoleList() {
+	for _, role := range listOfRoles {
+		fmt.Printf("Role Name: " + role + "\n")
+	}
+}
+
 func loop() {
 	imgui.MainMenuBar().Layout(
 		imgui.Menu("File").Layout(
@@ -351,13 +378,11 @@ func loop() {
 	imgui.SingleWindow().Layout(
 		imgui.PrepareMsgbox(),
 		imgui.Row(
-			imgui.Button("Log In").OnClick(func() {
-				showLoggedIn = true
-			}),
+			imgui.Button("Check Subnet Used").OnClick(checkSubnet),
+			imgui.Button("Check Roles Used").OnClick(getRoleList),
 			imgui.Button("Add New IP Address").OnClick(func() {
 				showEnterIPAddressWindow = true
 			}),
-			imgui.Button("Check Subnet Used").OnClick(checkSubnet),
 			imgui.Button("Refresh IP Address List").OnClick(resetRefreshTimer),
 			imgui.InputText(&inputIPAddressToSearchString).Label("Input IP Address To Search").Size(300),
 		),
@@ -368,7 +393,7 @@ func loop() {
 	)
 
 	if showLoggedIn {
-		imgui.Window("Log In Window").IsOpen(&showLoggedIn).Flags(imgui.WindowFlagsNone).Layout(
+		imgui.SingleWindow().IsOpen(&showLoggedIn).Flags(imgui.WindowFlagsNone).Layout(
 			imgui.InputText(&inputDomainLogIn).Label("Input Domain Address").Size(300),
 			imgui.InputText(&inputAPITokenLogIn).Label("Input API Token").Size(300),
 			imgui.Button("Log In").OnClick(logIn),
