@@ -2,16 +2,106 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"image/color"
+	"io"
 	"log"
+	"net/http"
 	"os"
 	"strings"
 
 	imgui "github.com/AllenDang/giu"
 	openapiclient "github.com/netbox-community/go-netbox/v4"
-	//excel "github.com/xuri/excelize/v2"
+	excel "github.com/xuri/excelize/v2"
 )
+
+type Tenant struct {
+	ID          int    `json:"id"`
+	URL         string `json:"url"`
+	Display     string `json:"display"`
+	Name        string `json:"name"`
+	Slug        string `json:"slug"`
+	Description string `json:"description"`
+}
+
+type Family struct {
+	Value int    `json:"value"`
+	Label string `json:"label"`
+}
+
+type Status struct {
+	Value string `json:"value"`
+	Label string `json:"label"`
+}
+
+type Prefix struct {
+	ID           int                    `json:"id"`
+	URL          string                 `json:"url"`
+	DisplayURL   string                 `json:"display_url"`
+	Display      string                 `json:"display"`
+	Family       Family                 `json:"family"`
+	Prefix       string                 `json:"prefix"`
+	Site         *Site                  `json:"site"`
+	VRF          *VRF                   `json:"vrf"`
+	Tenant       Tenant                 `json:"tenant"`
+	VLAN         *VLAN                  `json:"vlan"`
+	Status       Status                 `json:"status"`
+	Role         *Role                  `json:"role"`
+	IsPool       bool                   `json:"is_pool"`
+	MarkUtilized bool                   `json:"mark_utilized"`
+	Description  string                 `json:"description"`
+	Comments     string                 `json:"comments"`
+	Tags         []string               `json:"tags"`
+	CustomFields map[string]interface{} `json:"custom_fields"`
+	Created      string                 `json:"created"`
+	LastUpdated  string                 `json:"last_updated"`
+	Children     int                    `json:"children"`
+	Depth        int                    `json:"_depth"`
+}
+
+type Site struct {
+	ID          int    `json:"id"`
+	URL         string `json:"url"`
+	Display     string `json:"display"`
+	Name        string `json:"name"`
+	Slug        string `json:"slug"`
+	Description string `json:"description"`
+}
+
+type VRF struct {
+	ID          int    `json:"id"`
+	URL         string `json:"url"`
+	Display     string `json:"display"`
+	Name        string `json:"name"`
+	Slug        string `json:"slug"`
+	Description string `json:"description"`
+}
+
+type VLAN struct {
+	ID          int    `json:"id"`
+	URL         string `json:"url"`
+	Display     string `json:"display"`
+	Name        string `json:"name"`
+	Vid         int    `json:"vid"`
+	Description string `json:"description"`
+}
+
+type Role struct {
+	ID          int    `json:"id"`
+	URL         string `json:"url"`
+	Display     string `json:"display"`
+	Name        string `json:"name"`
+	Slug        string `json:"slug"`
+	Description string `json:"description"`
+}
+
+type ApiResponse struct {
+	Count    int      `json:"count"`
+	Next     *string  `json:"next"`
+	Previous *string  `json:"previous"`
+	Results  []Prefix `json:"results"`
+}
 
 var apiClient *openapiclient.APIClient
 var ctx context.Context
@@ -164,15 +254,87 @@ func resetRefreshTimer() {
 }
 
 func checkSubnet() {
-	subnetList, _, err := apiClient.IpamAPI.IpamPrefixesList(context.Background()).Limit(1000).Execute()
+	url := "https://demo.netbox.dev/api/ipam/prefixes/?limit=3000"
+
+	// Create a new HTTP request
+	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error fetching subnets: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error creating request: %v\n", err)
 		return
 	}
 
-	for _, subnet := range subnetList.Results {
-		fmt.Printf("Allocated Subnet: %s\n", subnet.Prefix)
+	// Add the Authorization header with your API token
+	req.Header.Set("Authorization", "Token "+inputAPITokenLogIn)
+
+	// Make the request
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error making GET request: %v\n", err)
+		return
 	}
+	defer resp.Body.Close()
+
+	// Read the response body
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error reading response body: %v\n", err)
+		return
+	}
+
+	// Print the response (list of prefixes)
+	fmt.Println(string(body))
+
+	var apiResponse ApiResponse
+
+	// Unmarshal JSON data
+	err = json.Unmarshal([]byte(string(body)), &apiResponse)
+	if err != nil {
+		log.Fatalf("Error parsing JSON: %v\n", err)
+		return
+	}
+
+	// Create a new Excel file
+	f := excel.NewFile()
+	sheetName := "Prefixes"
+	index, _ := f.NewSheet(sheetName)
+
+	// Create header row
+	headers := []string{
+		"ID", "URL", "Display URL", "Display", "Family Value",
+		"Family Label", "Prefix", "Tenant Name", "Created", "Last Updated",
+	}
+
+	for i, header := range headers {
+		cell, _ := excel.CoordinatesToCellName(i+1, 1)
+		f.SetCellValue(sheetName, cell, header)
+	}
+
+	// Populate the sheet with data
+	for rowIndex, prefix := range apiResponse.Results {
+		row := rowIndex + 2 // Start from the second row
+		f.SetCellValue(sheetName, fmt.Sprintf("A%d", row), prefix.ID)
+		f.SetCellValue(sheetName, fmt.Sprintf("B%d", row), prefix.URL)
+		f.SetCellValue(sheetName, fmt.Sprintf("C%d", row), prefix.DisplayURL)
+		f.SetCellValue(sheetName, fmt.Sprintf("D%d", row), prefix.Display)
+		f.SetCellValue(sheetName, fmt.Sprintf("E%d", row), prefix.Family.Value)
+		f.SetCellValue(sheetName, fmt.Sprintf("F%d", row), prefix.Family.Label)
+		f.SetCellValue(sheetName, fmt.Sprintf("G%d", row), prefix.Prefix)
+		f.SetCellValue(sheetName, fmt.Sprintf("H%d", row), prefix.Tenant.Name)
+		f.SetCellValue(sheetName, fmt.Sprintf("I%d", row), prefix.Created)
+		f.SetCellValue(sheetName, fmt.Sprintf("J%d", row), prefix.LastUpdated)
+	}
+
+	// Set the active sheet
+	f.SetActiveSheet(index)
+
+	// Save the file
+	if err := f.SaveAs("prefixes.xlsx"); err != nil {
+		log.Fatalf("Error saving file: %v\n", err)
+		return
+	}
+
+	fmt.Println("Excel file created successfully: prefixes.xlsx")
 }
 
 func loop() {
