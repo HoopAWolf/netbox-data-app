@@ -109,19 +109,17 @@ var rows []*imgui.TableRowWidget
 var timer float32 = 10.0
 var showEnterIPAddressWindow bool = false
 var showLoggedIn bool = true
-var loggedIn bool = false
 var inputIPAddressString string
 var inputIPAddressDesc string
 var inputIPAddressDNSName string = ""
 var inputIPAddressToSearchString string = ""
 var inputDomainLogIn string = "https://demo.netbox.dev"
 var inputAPITokenLogIn string = ""
-var listOfRoles []string = make([]string, 0)
+var listOfTenant []openapiclient.Tenant = make([]openapiclient.Tenant, 0)
+var listOfTenantName []string = make([]string, 0)
+var tenantChoice int32 = 0
 
 func buildRows() []*imgui.TableRowWidget {
-	if !showEnterIPAddressWindow && loggedIn {
-		timer -= 0.1
-	}
 
 	if timer <= 0.0 {
 
@@ -154,6 +152,23 @@ func buildRows() []*imgui.TableRowWidget {
 		)
 
 		rows[0].BgColor(&(color.RGBA{200, 100, 100, 255}))
+
+		nulTenant := openapiclient.Tenant{
+			Name: "None",
+		}
+
+		listOfTenantName = append(listOfTenantName, "None")
+		listOfTenant = append(listOfTenant, nulTenant)
+
+		tenantList, _, err := apiClient.TenancyAPI.TenancyTenantsList(ctx).Execute()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error fetching tenants: %v\n", err)
+		}
+
+		for _, tenant := range tenantList.Results {
+			listOfTenant = append(listOfTenant, tenant)
+			listOfTenantName = append(listOfTenantName, tenant.Name)
+		}
 
 		// Fill data
 		var i = 1
@@ -190,18 +205,6 @@ func buildRows() []*imgui.TableRowWidget {
 					roleName = strings.Trim(roleName, "map[%!d(string=label):%!d(string=) %!d(string=value):%!d(string=)]")
 					temp := strings.Split(roleName, ")")
 					roleName = temp[0]
-
-					var hasFound bool = false
-					for _, role := range listOfRoles {
-						if role == roleName {
-							hasFound = true
-							break
-						}
-					}
-
-					if !hasFound {
-						listOfRoles = append(listOfRoles, roleName)
-					}
 				}
 
 				if strings.Contains(assigned, "true") {
@@ -242,16 +245,54 @@ func addIPAddressConfirmation() {
 		case imgui.DialogResultYes:
 			statusOfNewIP := openapiclient.PATCHEDWRITABLEIPADDRESSREQUESTSTATUS_ACTIVE
 
-			ipAddressRequest := openapiclient.WritableIPAddressRequest{
-				Address:     inputIPAddressString,   // IP address with CIDR notation
-				Status:      &statusOfNewIP,         // Status of the IP address
-				DnsName:     &inputIPAddressDNSName, //DNS name
-				Description: &inputIPAddressDesc,    // Optional description
+			if tenantChoice != 0 {
+				tenantData := openapiclient.TenantRequest{
+					Name: listOfTenant[tenantChoice].Name,
+					Slug: listOfTenant[tenantChoice].Slug,
+				}
+
+				var tenenatRequestData openapiclient.NullableTenantRequest
+				tenenatRequestData.Set(&tenantData)
+
+				ipAddressRequest := openapiclient.WritableIPAddressRequest{
+					Address:     inputIPAddressString,   // IP address with CIDR notation
+					Tenant:      tenenatRequestData,     // Tenant Name
+					Status:      &statusOfNewIP,         // Status of the IP address
+					DnsName:     &inputIPAddressDNSName, //DNS name
+					Description: &inputIPAddressDesc,    // Optional description
+				}
+
+				resp, httpResp, err := apiClient.IpamAPI.IpamIpAddressesCreate(context.Background()).WritableIPAddressRequest(ipAddressRequest).Execute()
+
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Error creating IP address: %v\n", err)
+					if httpResp != nil {
+						body, _ := io.ReadAll(httpResp.Body)
+						fmt.Printf("HTTP Response: %s\n", string(body))
+					}
+
+					return
+				}
+
+				// Check if the response is nil
+				if resp == nil {
+					fmt.Println("No response received")
+				} else {
+					fmt.Println(resp)
+				}
+			} else {
+				ipAddressRequest := openapiclient.WritableIPAddressRequest{
+					Address:     inputIPAddressString,   // IP address with CIDR notation
+					Status:      &statusOfNewIP,         // Status of the IP address
+					DnsName:     &inputIPAddressDNSName, //DNS name
+					Description: &inputIPAddressDesc,    // Optional description
+				}
+
+				resp, _, _ := apiClient.IpamAPI.IpamIpAddressesCreate(context.Background()).WritableIPAddressRequest(ipAddressRequest).Execute()
+				fmt.Println(resp)
 			}
 
-			resp, _, _ := apiClient.IpamAPI.IpamIpAddressesCreate(context.Background()).WritableIPAddressRequest(ipAddressRequest).Execute()
-
-			fmt.Println(resp)
+			resetRefreshTimer()
 		case imgui.DialogResultNo:
 			fmt.Println("No clicked")
 		}
@@ -356,12 +397,7 @@ func checkSubnet() {
 	}
 
 	fmt.Println("Excel file created successfully: prefixes.xlsx")
-}
-
-func getRoleList() {
-	for _, role := range listOfRoles {
-		fmt.Printf("Role Name: " + role + "\n")
-	}
+	resetRefreshTimer()
 }
 
 func loop() {
@@ -379,7 +415,6 @@ func loop() {
 		imgui.PrepareMsgbox(),
 		imgui.Row(
 			imgui.Button("Check Subnet Used").OnClick(checkSubnet),
-			imgui.Button("Check Roles Used").OnClick(getRoleList),
 			imgui.Button("Add New IP Address").OnClick(func() {
 				showEnterIPAddressWindow = true
 			}),
@@ -405,6 +440,7 @@ func loop() {
 			imgui.InputText(&inputIPAddressString).Label("Input IP Address").Size(300),
 			imgui.InputText(&inputIPAddressDNSName).Label("Input DNS Name").Size(300),
 			imgui.InputText(&inputIPAddressDesc).Label("Input Desceiption").Size(700),
+			imgui.Combo("Tenants", listOfTenantName[tenantChoice], listOfTenantName, &tenantChoice).Size(300),
 			imgui.Button("Add IP Address").OnClick(addIPAddressConfirmation),
 		)
 	}
