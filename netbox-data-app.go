@@ -103,25 +103,67 @@ type ApiResponse struct {
 	Results  []Prefix `json:"results"`
 }
 
+type Device struct {
+	Id      int    `json:"id"`
+	Name    string `json:"name"`
+	Display string `json:"display"`
+}
+
+type DeviceListResponse struct {
+	Count    int      `json:"count"`
+	Next     string   `json:"next"`
+	Previous string   `json:"previous"`
+	Results  []Device `json:"results"`
+}
+
+type DeviceDetails struct {
+    ID          int    `json:"id"`
+    Name        string `json:"name"`
+    DeviceRole  struct {
+        Display string `json:"display"`
+    } `json:"device_role"`
+    DeviceType struct {
+        Display     string `json:"display"`
+        Manufacturer struct {
+            Display string `json:"display"`
+        } `json:"manufacturer"`
+    } `json:"device_type"`
+    Status struct {
+        Value string `json:"value"`
+    } `json:"status"`
+    Serial      string `json:"serial"`
+    Tenant      struct {
+        Display string `json:"display"`
+    } `json:"tenant"`
+    Site        struct {
+        Display string `json:"display"`
+    } `json:"site"`
+}
+
 var apiClient *openapiclient.APIClient
 var ctx context.Context
 var rows []*imgui.TableRowWidget
 var timer float32 = 10.0
 var showEnterIPAddressWindow bool = false
 var showLoggedIn bool = true
+var showDeviceScreen bool = false
 var inputIPAddressString string
 var inputIPAddressDesc string
 var inputIPAddressDNSName string = ""
 var inputIPAddressToSearchString string = ""
+var inputDeviceToSearchString string = ""
 var inputDomainLogIn string = "https://demo.netbox.dev"
 var inputAPITokenLogIn string = ""
 var listOfTenant []openapiclient.Tenant = make([]openapiclient.Tenant, 0)
 var listOfTenantName []string = make([]string, 0)
+var listOfDevice []int = make([]int, 0)
+var listOfDeviceName []string = make([]string, 0)
 var tenantChoice int32 = 0
+var deviceChoice int32 = 0
 
 func buildRows() []*imgui.TableRowWidget {
 
-	if timer <= 0.0 {
+	if timer <= 0.0 && !showDeviceScreen {
 
 		// Fetch all IP addresses
 		availableIPs, _, err := apiClient.IpamAPI.IpamIpAddressesList(ctx).Limit(6000).Execute()
@@ -139,6 +181,60 @@ func buildRows() []*imgui.TableRowWidget {
 			}
 		}
 
+		listOfDevice = listOfDevice[:0]
+		listOfDeviceName = listOfDeviceName[:0]
+		listOfTenant = listOfTenant[:0]
+		listOfTenantName = listOfTenantName[:0]
+
+		//Interface
+		listOfDeviceName = append(listOfDeviceName, "None")
+		listOfDevice = append(listOfDevice, 0)
+		netboxURL := inputDomainLogIn + "/api/dcim/devices/?per_page=1000"
+
+		// Create a new request
+		req, err := http.NewRequest("GET", netboxURL, nil)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error creating request: %v\n", err)
+		}
+
+		// Add authentication header
+		req.Header.Add("Authorization", "Token "+inputAPITokenLogIn)
+
+		// Create an HTTP client and set a timeout
+		client := &http.Client{}
+
+		// Make the request
+		resp, err := client.Do(req)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error making request: %v\n", err)
+		}
+		defer resp.Body.Close()
+
+		// Check the response status
+		if resp.StatusCode != http.StatusOK {
+			bodyBytes, _ := io.ReadAll(resp.Body)
+			fmt.Fprintf(os.Stderr, "Error response from NetBox: %v\n", string(bodyBytes))
+		}
+
+		// Parse the response body
+		bodyBytes, err := io.ReadAll(resp.Body)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error reading response body: %v\n", err)
+		}
+
+		// Unmarshal the JSON response
+		var deviceList DeviceListResponse
+		err = json.Unmarshal(bodyBytes, &deviceList)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error unmarshalling response: %v\n", err)
+		}
+
+		// Print the list of devices and their IDs
+		for _, device := range deviceList.Results {
+			listOfDevice = append(listOfDevice, device.Id)
+			listOfDeviceName = append(listOfDeviceName, device.Display)
+		}
+
 		rows = make([]*imgui.TableRowWidget, total+1)
 
 		rows[0] = imgui.TableRow(
@@ -153,6 +249,7 @@ func buildRows() []*imgui.TableRowWidget {
 
 		rows[0].BgColor(&(color.RGBA{200, 100, 100, 255}))
 
+		//Tenant
 		nulTenant := openapiclient.Tenant{
 			Name: "None",
 		}
@@ -239,6 +336,145 @@ func buildRows() []*imgui.TableRowWidget {
 	return rows
 }
 
+func buildDeviceRows() []*imgui.TableRowWidget {
+
+	if timer <= 0.0 {
+
+		// Set headers
+		headers := []string{"Name", "Serial Number", "Tenant", "Site", "Manufacturer"}
+
+		//Interface
+		listOfDevice = listOfDevice[:0]
+		listOfDeviceName = listOfDeviceName[:0]
+
+		//Interface
+		listOfDeviceName = append(listOfDeviceName, "None")
+		listOfDevice = append(listOfDevice, 0)
+		netboxURL := inputDomainLogIn + "/api/dcim/devices/?per_page=1000"
+
+		// Create a new request
+		req, err := http.NewRequest("GET", netboxURL, nil)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error creating request: %v\n", err)
+		}
+
+		// Add authentication header
+		req.Header.Add("Authorization", "Token "+inputAPITokenLogIn)
+
+		// Create an HTTP client and set a timeout
+		client := &http.Client{}
+
+		// Make the request
+		resp, err := client.Do(req)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error making request: %v\n", err)
+		}
+		defer resp.Body.Close()
+
+		// Check the response status
+		if resp.StatusCode != http.StatusOK {
+			bodyBytes, _ := io.ReadAll(resp.Body)
+			fmt.Fprintf(os.Stderr, "Error response from NetBox: %v\n", string(bodyBytes))
+		}
+
+		// Parse the response body
+		bodyBytes, err := io.ReadAll(resp.Body)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error reading response body: %v\n", err)
+		}
+
+		// Unmarshal the JSON response
+		var deviceList DeviceListResponse
+		err = json.Unmarshal(bodyBytes, &deviceList)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error unmarshalling response: %v\n", err)
+		}
+
+		// Print the list of devices and their IDs
+		for _, device := range deviceList.Results {
+			listOfDevice = append(listOfDevice, device.Id)
+			listOfDeviceName = append(listOfDeviceName, device.Display)
+		}
+
+		total := 0
+
+		for i := 1; i < len(listOfDeviceName); i++ {
+			if strings.Contains(listOfDeviceName[i], inputDeviceToSearchString) {
+				total++
+			}
+		}
+
+		rows = make([]*imgui.TableRowWidget, total + 1)
+
+		rows[0] = imgui.TableRow(
+			imgui.Label(headers[0]),
+			imgui.Label(headers[1]),
+			imgui.Label(headers[2]),
+			imgui.Label(headers[3]),
+			imgui.Label(headers[4]),
+		)
+
+		rows[0].BgColor(&(color.RGBA{200, 100, 100, 255}))
+
+		// Fill data
+		var i = 1
+		for j := 1; j < len(listOfDeviceName); j++ {
+			if strings.Contains(listOfDeviceName[j], inputDeviceToSearchString) {
+				apiUrl := fmt.Sprintf(inputDomainLogIn+"/api/dcim/devices/%d/", listOfDevice[j])
+
+				// Make the HTTP request
+				req, err := http.NewRequestWithContext(context.Background(), "GET", apiUrl, nil)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Error creating request: %v\n", err)
+					continue
+				}
+
+				// Add authentication token (replace with your actual token)
+				req.Header.Set("Authorization", "Token "+inputAPITokenLogIn)
+
+				// Perform the request
+				client := &http.Client{}
+				resp, err := client.Do(req)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Error fetching device details: %v\n", err)
+					continue
+				}
+				defer resp.Body.Close()
+
+				if resp.StatusCode != http.StatusOK {
+					fmt.Fprintf(os.Stderr, "Error: HTTP %v\n", resp.Status)
+				}
+
+				// Read the response body
+				body, err := io.ReadAll(resp.Body)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Error reading response body: %v\n", err)
+				}
+
+				// Parse the JSON response
+				var deviceDetails DeviceDetails
+				err = json.Unmarshal(body, &deviceDetails)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Error parsing JSON: %v\n", err)
+				}
+
+				rows[i] = imgui.TableRow(
+					imgui.Label(listOfDeviceName[j]),
+					imgui.Label(deviceDetails.Serial),
+					imgui.Label(deviceDetails.Tenant.Display),
+					imgui.Label(deviceDetails.Site.Display),
+					imgui.Label(deviceDetails.DeviceType.Manufacturer.Display),
+				)
+				i++
+			}
+		}
+
+		timer = 50.0
+	}
+
+	return rows
+}
+
 func addIPAddressConfirmation() {
 	imgui.Msgbox("Confirmation", "Are you sure?").Buttons(imgui.MsgboxButtonsYesNo).ResultCallback(func(result imgui.DialogResult) {
 		switch result {
@@ -246,23 +482,21 @@ func addIPAddressConfirmation() {
 			statusOfNewIP := openapiclient.PATCHEDWRITABLEIPADDRESSREQUESTSTATUS_ACTIVE
 
 			if tenantChoice != 0 {
-				tenantData := openapiclient.TenantRequest{
+				tenantRequest := openapiclient.NewNullableTenantRequest(&openapiclient.TenantRequest{
 					Name: listOfTenant[tenantChoice].Name,
 					Slug: listOfTenant[tenantChoice].Slug,
-				}
-
-				var tenenatRequestData openapiclient.NullableTenantRequest
-				tenenatRequestData.Set(&tenantData)
+				})
 
 				ipAddressRequest := openapiclient.WritableIPAddressRequest{
 					Address:     inputIPAddressString,   // IP address with CIDR notation
-					Tenant:      tenenatRequestData,     // Tenant Name
+					Tenant:      *tenantRequest,         // Tenant Name
 					Status:      &statusOfNewIP,         // Status of the IP address
 					DnsName:     &inputIPAddressDNSName, //DNS name
 					Description: &inputIPAddressDesc,    // Optional description
+
 				}
 
-				resp, httpResp, err := apiClient.IpamAPI.IpamIpAddressesCreate(context.Background()).WritableIPAddressRequest(ipAddressRequest).Execute()
+				_, httpResp, err := apiClient.IpamAPI.IpamIpAddressesCreate(context.Background()).WritableIPAddressRequest(ipAddressRequest).Execute()
 
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "Error creating IP address: %v\n", err)
@@ -272,13 +506,6 @@ func addIPAddressConfirmation() {
 					}
 
 					return
-				}
-
-				// Check if the response is nil
-				if resp == nil {
-					fmt.Println("No response received")
-				} else {
-					fmt.Println(resp)
 				}
 			} else {
 				ipAddressRequest := openapiclient.WritableIPAddressRequest{
@@ -306,7 +533,6 @@ func logIn() {
 	//apiClient = openapiclient.NewAPIClientFor("https://netbox.cit.insea.io", "e3d318664caba8355bcea30a00237ae38c02b357")
 	resp, _, err := apiClient.StatusAPI.StatusRetrieve(ctx).Execute()
 	if err == nil {
-		loggedIn = true
 		showLoggedIn = false
 		resetRefreshTimer()
 	}
@@ -319,7 +545,7 @@ func resetRefreshTimer() {
 }
 
 func checkSubnet() {
-	url := "https://demo.netbox.dev/api/ipam/prefixes/?limit=3000"
+	url := inputDomainLogIn + "/api/ipam/prefixes/?limit=3000"
 
 	// Create a new HTTP request
 	req, err := http.NewRequest("GET", url, nil)
@@ -401,19 +627,13 @@ func checkSubnet() {
 }
 
 func loop() {
-	imgui.MainMenuBar().Layout(
-		imgui.Menu("File").Layout(
-			imgui.MenuItem("Open").OnClick(func() {
-				showLoggedIn = true
-			}),
-			imgui.Separator(),
-			imgui.MenuItem("Exit"),
-		),
-	).Build()
-
 	imgui.SingleWindow().Layout(
 		imgui.PrepareMsgbox(),
 		imgui.Row(
+			imgui.Button("Devices").OnClick(func() {
+				showDeviceScreen = true
+				resetRefreshTimer()
+			}),
 			imgui.Button("Check Subnet Used").OnClick(checkSubnet),
 			imgui.Button("Add New IP Address").OnClick(func() {
 				showEnterIPAddressWindow = true
@@ -426,6 +646,26 @@ func loop() {
 			imgui.Table().Freeze(0, 1).FastMode(true).Rows(buildRows()...),
 		),
 	)
+
+	if showDeviceScreen {
+		imgui.SingleWindow().IsOpen(&showDeviceScreen).Flags(imgui.WindowFlagsNone).Layout(
+			imgui.Row(
+				imgui.Button("IP Addresses").OnClick(func() {
+					showDeviceScreen = false
+					resetRefreshTimer()
+				}),
+				imgui.Button("Add New Device").OnClick(func() {
+					showEnterIPAddressWindow = true
+				}),
+				imgui.Button("Refresh Device List").OnClick(resetRefreshTimer),
+				imgui.InputText(&inputDeviceToSearchString).Label("Input Device To Search").Size(300),
+			),
+			imgui.Row(
+				imgui.Label("Devices"),
+				imgui.Table().Freeze(0, 1).FastMode(true).Rows(buildDeviceRows()...),
+			),
+		)
+	}
 
 	if showLoggedIn {
 		imgui.SingleWindow().IsOpen(&showLoggedIn).Flags(imgui.WindowFlagsNone).Layout(
@@ -441,6 +681,7 @@ func loop() {
 			imgui.InputText(&inputIPAddressDNSName).Label("Input DNS Name").Size(300),
 			imgui.InputText(&inputIPAddressDesc).Label("Input Desceiption").Size(700),
 			imgui.Combo("Tenants", listOfTenantName[tenantChoice], listOfTenantName, &tenantChoice).Size(300),
+			imgui.Combo("Interface", listOfDeviceName[deviceChoice], listOfDeviceName, &deviceChoice).Size(300),
 			imgui.Button("Add IP Address").OnClick(addIPAddressConfirmation),
 		)
 	}
