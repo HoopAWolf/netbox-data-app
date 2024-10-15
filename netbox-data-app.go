@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -117,27 +118,39 @@ type DeviceListResponse struct {
 }
 
 type DeviceDetails struct {
-    ID          int    `json:"id"`
-    Name        string `json:"name"`
-    DeviceRole  struct {
-        Display string `json:"display"`
-    } `json:"device_role"`
-    DeviceType struct {
-        Display     string `json:"display"`
-        Manufacturer struct {
-            Display string `json:"display"`
-        } `json:"manufacturer"`
-    } `json:"device_type"`
-    Status struct {
-        Value string `json:"value"`
-    } `json:"status"`
-    Serial      string `json:"serial"`
-    Tenant      struct {
-        Display string `json:"display"`
-    } `json:"tenant"`
-    Site        struct {
-        Display string `json:"display"`
-    } `json:"site"`
+	ID         int    `json:"id"`
+	Name       string `json:"name"`
+	DeviceRole struct {
+		Display string `json:"display"`
+	} `json:"device_role"`
+	DeviceType struct {
+		Display      string `json:"display"`
+		Manufacturer struct {
+			Display string `json:"display"`
+		} `json:"manufacturer"`
+	} `json:"device_type"`
+	Status struct {
+		Value string `json:"value"`
+	} `json:"status"`
+	Serial string `json:"serial"`
+	Tenant struct {
+		Display string `json:"display"`
+	} `json:"tenant"`
+	Site struct {
+		Display string `json:"display"`
+	} `json:"site"`
+}
+
+type DeviceRequest struct {
+	Name         string `json:"name"`
+	DeviceType   int    `json:"device_type"`      // ID of the device type
+	DeviceRole   int    `json:"role"`             // ID of the device role
+	Site         int    `json:"site"`             // ID of the site
+	Tenant       int    `json:"tenant,omitempty"` // ID of the tenant (optional)
+	Manufacturer int    `json:"manufacturer"`     // ID of the manufacturer
+	Status       string `json:"status"`           // Status, e.g., "active"
+	Serial       string `json:"serial,omitempty"` // Serial number (optional)
+	Comments     string `json:"comments,omitempty"`
 }
 
 var apiClient *openapiclient.APIClient
@@ -145,11 +158,14 @@ var ctx context.Context
 var rows []*imgui.TableRowWidget
 var timer float32 = 10.0
 var showEnterIPAddressWindow bool = false
+var showEnterDeviceWindow bool = false
 var showLoggedIn bool = true
 var showDeviceScreen bool = false
 var inputIPAddressString string
 var inputIPAddressDesc string
 var inputIPAddressDNSName string = ""
+var inputDeviceSerialNumber string = ""
+var inputDeviceName string = ""
 var inputIPAddressToSearchString string = ""
 var inputDeviceToSearchString string = ""
 var inputDomainLogIn string = "https://demo.netbox.dev"
@@ -158,8 +174,20 @@ var listOfTenant []openapiclient.Tenant = make([]openapiclient.Tenant, 0)
 var listOfTenantName []string = make([]string, 0)
 var listOfDevice []int = make([]int, 0)
 var listOfDeviceName []string = make([]string, 0)
+var listOfDeviceType []int = make([]int, 0)
+var listOfDeviceTypeName []string = make([]string, 0)
+var listOfDeviceManufacturer []int = make([]int, 0)
+var listOfDeviceManufacturerName []string = make([]string, 0)
+var listOfDeviceSite []int = make([]int, 0)
+var listOfDeviceSiteName []string = make([]string, 0)
+var listOfDeviceRole []int = make([]int, 0)
+var listOfDeviceRoleName []string = make([]string, 0)
 var tenantChoice int32 = 0
 var deviceChoice int32 = 0
+var deviceTypeChoice int32 = 0
+var deviceManufacturerChoice int32 = 0
+var deviceSiteChoice int32 = 0
+var deviceRoleChoice int32 = 0
 
 func buildRows() []*imgui.TableRowWidget {
 
@@ -336,9 +364,247 @@ func buildRows() []*imgui.TableRowWidget {
 	return rows
 }
 
+func getManufacturer() {
+	apiUrl := inputDomainLogIn + "/api/dcim/manufacturers/"
+
+	// Create an HTTP GET request
+	req, err := http.NewRequestWithContext(context.Background(), "GET", apiUrl, nil)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error creating request: %v\n", err)
+		return
+	}
+
+	req.Header.Set("Authorization", "Token "+inputAPITokenLogIn)
+
+	// Send the request
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error fetching manufacturers: %v\n", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	// Read and print the response
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error reading response body: %v\n", err)
+		return
+	}
+
+	// Print the raw JSON response (optional)
+	fmt.Printf("Response: %s\n", string(body))
+
+	// Parse JSON response to extract manufacturer information
+	var result map[string]interface{}
+	if err := json.Unmarshal(body, &result); err != nil {
+		fmt.Fprintf(os.Stderr, "Error parsing JSON: %v\n", err)
+		return
+	}
+
+	listOfDeviceManufacturer = listOfDeviceManufacturer[:0]
+	listOfDeviceManufacturerName = listOfDeviceManufacturerName[:0]
+
+	listOfDeviceManufacturer = append(listOfDeviceManufacturer, 0)
+	listOfDeviceManufacturerName = append(listOfDeviceManufacturerName, "None")
+
+	if results, ok := result["results"].([]interface{}); ok {
+		for _, r := range results {
+			if manufacturer, ok := r.(map[string]interface{}); ok {
+				if idFloat, ok := manufacturer["id"].(float64); ok {
+					id := int(idFloat) // Convert float64 to int32
+					listOfDeviceManufacturer = append(listOfDeviceManufacturer, id)
+					listOfDeviceManufacturerName = append(listOfDeviceManufacturerName, manufacturer["name"].(string))
+				}
+			}
+		}
+	}
+}
+
+func getDeviceType() {
+	apiUrl := inputDomainLogIn + "/api/dcim/device-types/"
+
+	// Create an HTTP GET request
+	req, err := http.NewRequestWithContext(context.Background(), "GET", apiUrl, nil)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error creating request: %v\n", err)
+		return
+	}
+
+	req.Header.Set("Authorization", "Token "+inputAPITokenLogIn)
+
+	// Send the request
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error fetching device types: %v\n", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	// Read the response
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error reading response body: %v\n", err)
+		return
+	}
+
+	// Print the raw JSON response (optional)
+	fmt.Printf("Response: %s\n", string(body))
+
+	// Parse JSON response to extract device type information
+	var result map[string]interface{}
+	if err := json.Unmarshal(body, &result); err != nil {
+		fmt.Fprintf(os.Stderr, "Error parsing JSON: %v\n", err)
+		return
+	}
+
+	listOfDeviceType = listOfDeviceType[:0]
+	listOfDeviceTypeName = listOfDeviceTypeName[:0]
+
+	listOfDeviceType = append(listOfDeviceType, 0)
+	listOfDeviceTypeName = append(listOfDeviceTypeName, "None")
+
+	// Extract and print device type IDs, models, and manufacturer names
+	if results, ok := result["results"].([]interface{}); ok {
+		for _, r := range results {
+			if deviceType, ok := r.(map[string]interface{}); ok {
+
+				if idFloat, ok := deviceType["id"].(float64); ok {
+					id := int(idFloat) // Convert float64 to int32
+					listOfDeviceType = append(listOfDeviceType, id)
+					listOfDeviceTypeName = append(listOfDeviceTypeName, deviceType["model"].(string))
+				}
+			}
+		}
+	}
+}
+
+func getDeviceRole() {
+	apiUrl := inputDomainLogIn + "/api/dcim/device-roles/"
+
+	// Create an HTTP GET request
+	req, err := http.NewRequestWithContext(context.Background(), "GET", apiUrl, nil)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error creating request: %v\n", err)
+		return
+	}
+
+	req.Header.Set("Authorization", "Token "+inputAPITokenLogIn)
+
+	// Send the request
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error fetching device roles: %v\n", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	// Read the response
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error reading response body: %v\n", err)
+		return
+	}
+
+	// Print the raw JSON response (optional)
+	fmt.Printf("Response: %s\n", string(body))
+
+	// Parse JSON response to extract device role information
+	var result map[string]interface{}
+	if err := json.Unmarshal(body, &result); err != nil {
+		fmt.Fprintf(os.Stderr, "Error parsing JSON: %v\n", err)
+		return
+	}
+
+	listOfDeviceRole = listOfDeviceRole[:0]
+	listOfDeviceRoleName = listOfDeviceRoleName[:0]
+
+	listOfDeviceRole = append(listOfDeviceRole, 0)
+	listOfDeviceRoleName = append(listOfDeviceRoleName, "None")
+
+	// Extract and print device role IDs and names
+	if results, ok := result["results"].([]interface{}); ok {
+		for _, r := range results {
+			if role, ok := r.(map[string]interface{}); ok {
+
+				if idFloat, ok := role["id"].(float64); ok {
+					id := int(idFloat) // Convert float64 to int32
+					listOfDeviceRole = append(listOfDeviceRole, id)
+					listOfDeviceRoleName = append(listOfDeviceRoleName, role["name"].(string))
+				}
+			}
+		}
+	}
+}
+
+func getDeviceSite() {
+	apiUrl := inputDomainLogIn + "/api/dcim/sites/"
+
+	// Create an HTTP GET request
+	req, err := http.NewRequestWithContext(context.Background(), "GET", apiUrl, nil)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error creating request: %v\n", err)
+		return
+	}
+
+	req.Header.Set("Authorization", "Token "+inputAPITokenLogIn)
+
+	// Send the request
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error fetching sites: %v\n", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	// Read the response
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error reading response body: %v\n", err)
+		return
+	}
+
+	// Print the raw JSON response (optional)
+	fmt.Printf("Response: %s\n", string(body))
+
+	// Parse JSON response to extract site information
+	var result map[string]interface{}
+	if err := json.Unmarshal(body, &result); err != nil {
+		fmt.Fprintf(os.Stderr, "Error parsing JSON: %v\n", err)
+		return
+	}
+
+	listOfDeviceSite = listOfDeviceSite[:0]
+	listOfDeviceSiteName = listOfDeviceSiteName[:0]
+
+	listOfDeviceSite = append(listOfDeviceSite, 0)
+	listOfDeviceSiteName = append(listOfDeviceSiteName, "None")
+
+	// Extract and print site IDs and names
+	if results, ok := result["results"].([]interface{}); ok {
+		for _, r := range results {
+			if site, ok := r.(map[string]interface{}); ok {
+				if idFloat, ok := site["id"].(float64); ok {
+					id := int(idFloat) // Convert float64 to int32
+					listOfDeviceSite = append(listOfDeviceSite, id)
+					listOfDeviceSiteName = append(listOfDeviceSiteName, site["name"].(string))
+				}
+			}
+		}
+	}
+}
+
 func buildDeviceRows() []*imgui.TableRowWidget {
 
 	if timer <= 0.0 {
+
+		getManufacturer()
+		getDeviceSite()
+		getDeviceType()
+		getDeviceRole()
 
 		// Set headers
 		headers := []string{"Name", "Serial Number", "Tenant", "Site", "Manufacturer"}
@@ -404,7 +670,7 @@ func buildDeviceRows() []*imgui.TableRowWidget {
 			}
 		}
 
-		rows = make([]*imgui.TableRowWidget, total + 1)
+		rows = make([]*imgui.TableRowWidget, total+1)
 
 		rows[0] = imgui.TableRow(
 			imgui.Label(headers[0]),
@@ -525,6 +791,71 @@ func addIPAddressConfirmation() {
 		}
 
 		showEnterIPAddressWindow = false
+	})
+}
+
+func addDeviceConfirmation() {
+	imgui.Msgbox("Confirmation", "Are you sure?").Buttons(imgui.MsgboxButtonsYesNo).ResultCallback(func(result imgui.DialogResult) {
+		switch result {
+		case imgui.DialogResultYes:
+
+			deviceData := DeviceRequest{
+				Name:         inputDeviceName,
+				DeviceType:   listOfDeviceType[deviceTypeChoice],
+				DeviceRole:   listOfDeviceRole[deviceRoleChoice],
+				Site:         listOfDeviceSite[deviceSiteChoice],
+				Tenant:       int(listOfTenant[tenantChoice].Id),
+				Manufacturer: listOfDeviceManufacturer[deviceManufacturerChoice],
+				Status:       "active",                // Device status
+				Serial:       inputDeviceSerialNumber, // Serial number
+				Comments:     "This is a test device", // Optional comments
+			}
+
+			// Convert the device data to JSON
+			jsonData, err := json.Marshal(deviceData)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error marshalling device data: %v\n", err)
+				return
+			}
+
+			// NetBox API URL to create a new device
+			apiUrl := inputDomainLogIn + "/api/dcim/devices/"
+
+			// Create an HTTP POST request with the device data
+			req, err := http.NewRequestWithContext(context.Background(), "POST", apiUrl, bytes.NewBuffer(jsonData))
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error creating request: %v\n", err)
+				return
+			}
+
+			req.Header.Set("Authorization", "Token "+inputAPITokenLogIn)
+			req.Header.Set("Content-Type", "application/json")
+
+			// Send the request
+			client := &http.Client{}
+			resp, err := client.Do(req)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error creating device: %v\n", err)
+				return
+			}
+			defer resp.Body.Close()
+
+			// Check if the device was created successfully
+			if resp.StatusCode != http.StatusCreated {
+				// Print detailed error message from the response
+				body, _ := io.ReadAll(resp.Body)
+				fmt.Fprintf(os.Stderr, "Error: HTTP %v\nResponse: %s\n", resp.Status, string(body))
+				return
+			}
+
+			fmt.Println("Device created successfully!")
+
+			resetRefreshTimer()
+		case imgui.DialogResultNo:
+			fmt.Println("No clicked")
+		}
+
+		showEnterDeviceWindow = false
 	})
 }
 
@@ -655,7 +986,7 @@ func loop() {
 					resetRefreshTimer()
 				}),
 				imgui.Button("Add New Device").OnClick(func() {
-					showEnterIPAddressWindow = true
+					showEnterDeviceWindow = true
 				}),
 				imgui.Button("Refresh Device List").OnClick(resetRefreshTimer),
 				imgui.InputText(&inputDeviceToSearchString).Label("Input Device To Search").Size(300),
@@ -683,6 +1014,19 @@ func loop() {
 			imgui.Combo("Tenants", listOfTenantName[tenantChoice], listOfTenantName, &tenantChoice).Size(300),
 			imgui.Combo("Interface", listOfDeviceName[deviceChoice], listOfDeviceName, &deviceChoice).Size(300),
 			imgui.Button("Add IP Address").OnClick(addIPAddressConfirmation),
+		)
+	}
+
+	if showEnterDeviceWindow {
+		imgui.Window("Device Input Window").IsOpen(&showEnterDeviceWindow).Flags(imgui.WindowFlagsNone).Layout(
+			imgui.InputText(&inputDeviceName).Label("Input Device Name").Size(300),
+			imgui.InputText(&inputDeviceSerialNumber).Label("Input Serial Number").Size(300),
+			imgui.Combo("Tenants", listOfTenantName[tenantChoice], listOfTenantName, &tenantChoice).Size(300),
+			imgui.Combo("Manufacturer", listOfDeviceManufacturerName[deviceManufacturerChoice], listOfDeviceManufacturerName, &deviceManufacturerChoice).Size(300),
+			imgui.Combo("Device Role", listOfDeviceRoleName[deviceRoleChoice], listOfDeviceRoleName, &deviceRoleChoice).Size(300),
+			imgui.Combo("Device Site", listOfDeviceSiteName[deviceSiteChoice], listOfDeviceSiteName, &deviceSiteChoice).Size(300),
+			imgui.Combo("Device Type", listOfDeviceTypeName[deviceTypeChoice], listOfDeviceTypeName, &deviceTypeChoice).Size(300),
+			imgui.Button("Add Device").OnClick(addDeviceConfirmation),
 		)
 	}
 }
