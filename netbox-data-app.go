@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"image/color"
@@ -14,6 +15,9 @@ import (
 
 	imgui "github.com/AllenDang/giu"
 	openapiclient "github.com/netbox-community/go-netbox/v4"
+	"github.com/sjwhitworth/golearn/base"
+	"github.com/sjwhitworth/golearn/evaluation"
+	"github.com/sjwhitworth/golearn/trees"
 	excel "github.com/xuri/excelize/v2"
 )
 
@@ -150,7 +154,6 @@ type DeviceRequest struct {
 	Manufacturer int    `json:"manufacturer"`     // ID of the manufacturer
 	Status       string `json:"status"`           // Status, e.g., "active"
 	Serial       string `json:"serial,omitempty"` // Serial number (optional)
-	Comments     string `json:"comments,omitempty"`
 }
 
 var apiClient *openapiclient.APIClient
@@ -682,6 +685,21 @@ func buildDeviceRows() []*imgui.TableRowWidget {
 
 		rows[0].BgColor(&(color.RGBA{200, 100, 100, 255}))
 
+		// Create a new Excel file
+		f := excel.NewFile()
+		sheetName := "Sheet1"
+		index, _ := f.NewSheet(sheetName)
+
+		// Create header row
+		sheetHeaders := []string{
+			"Name", "Type", "Site", "Tenant", "Label",
+		}
+
+		for i, header := range sheetHeaders {
+			cell, _ := excel.CoordinatesToCellName(i+1, 1)
+			f.SetCellValue(sheetName, cell, header)
+		}
+
 		// Fill data
 		var i = 1
 		for j := 1; j < len(listOfDeviceName); j++ {
@@ -731,14 +749,118 @@ func buildDeviceRows() []*imgui.TableRowWidget {
 					imgui.Label(deviceDetails.Site.Display),
 					imgui.Label(deviceDetails.DeviceType.Manufacturer.Display),
 				)
+
+				f.SetCellValue(sheetName, fmt.Sprintf("A%d", i+1), listOfDeviceName[j])
+				f.SetCellValue(sheetName, fmt.Sprintf("B%d", i+1), deviceDetails.DeviceType.Display)
+				f.SetCellValue(sheetName, fmt.Sprintf("C%d", i+1), deviceDetails.Site)
+				f.SetCellValue(sheetName, fmt.Sprintf("D%d", i+1), deviceDetails.Tenant)
+				f.SetCellValue(sheetName, fmt.Sprintf("E%d", i+1), "Office")
+
 				i++
 			}
 		}
+
+		// Set the active sheet
+		f.SetActiveSheet(index)
+
+		// Save the file
+		if err := f.SaveAs("devices_data.xlsx"); err != nil {
+			log.Fatalf("Error saving file: %v\n", err)
+		}
+
+		fmt.Println("Excel file created successfully: devices_data.xlsx")
 
 		timer = 50.0
 	}
 
 	return rows
+}
+
+func predictDevice() {
+
+	file, err := os.Open("devices_data.csv")
+	if err != nil {
+		log.Fatalf("Failed to open CSV file: %v", err)
+	}
+	defer file.Close()
+
+	// Create a new CSV reader
+	reader := csv.NewReader(file)
+
+	// Read all the records
+	records, err := reader.ReadAll()
+	if err != nil {
+		log.Fatalf("Failed to read CSV file: %v", err)
+	}
+
+	// Ensure there are at least some records, including the header
+	if len(records) == 0 {
+		log.Fatal("No records found in the CSV file.")
+	}
+	header := records[0]
+	expectedNumFields := len(header)
+
+	// Ensure there's a header row
+	if expectedNumFields == 0 {
+		log.Fatal("No header fields found.")
+	}
+
+	// Prepare to create a dataset
+	var filteredRecords [][]string
+
+	for i, record := range records[1:] { // Skip header
+		if len(record) != expectedNumFields {
+			log.Printf("Skipping row %d: wrong number of fields", i+2)
+			continue
+		}
+		filteredRecords = append(filteredRecords, record)
+	}
+
+	// Check if we have any valid records to parse
+	if len(filteredRecords) == 0 {
+		log.Fatal("No valid records found after filtering.")
+	}
+
+	// Create a DenseInstances object by directly parsing the CSV
+	rawData, err := base.ParseCSVToInstances("devices_data.csv", true)
+	if err != nil {
+		log.Fatalf("Failed to parse CSV to instances: %v", err)
+	}
+
+	// Print a summary of the data
+	fmt.Println(rawData)
+
+	// Create a new ID3 Decision Tree with a 0.6 pruning factor
+	decisionTree := trees.NewID3DecisionTree(0.6)
+
+	// Split data into 80% training and 20% testing
+	trainData, testData := base.InstancesTrainTestSplit(rawData, 0.8)
+
+	// Check if the data split succeeded
+	if trainData == nil || testData == nil {
+		log.Fatal("Failed to split data into training and testing sets.")
+	}
+
+	// Train the decision tree model using the training data
+	err = decisionTree.Fit(trainData)
+	if err != nil {
+		log.Fatal("Failed to train the model:", err)
+	}
+
+	// Make predictions on the test set
+	predictions, err := decisionTree.Predict(testData)
+	if err != nil {
+		log.Fatal("Failed to predict on test data:", err)
+	}
+
+	// Get the confusion matrix to evaluate the model
+	confusionMat, err := evaluation.GetConfusionMatrix(testData, predictions)
+	if err != nil {
+		log.Fatalf("Unable to get confusion matrix: %s", err)
+	}
+
+	// Print the evaluation summary (precision, recall, F1 score, etc.)
+	fmt.Println(evaluation.GetSummary(confusionMat))
 }
 
 func addIPAddressConfirmation() {
@@ -808,7 +930,6 @@ func addDeviceConfirmation() {
 				Manufacturer: listOfDeviceManufacturer[deviceManufacturerChoice],
 				Status:       "active",                // Device status
 				Serial:       inputDeviceSerialNumber, // Serial number
-				Comments:     "This is a test device", // Optional comments
 			}
 
 			// Convert the device data to JSON
@@ -857,6 +978,136 @@ func addDeviceConfirmation() {
 
 		showEnterDeviceWindow = false
 	})
+}
+
+func importDeviceFromCSV() {
+	f, err := excel.OpenFile("DeviceToImport.xlsx")
+
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer func() {
+		// Close the spreadsheet.
+		if err := f.Close(); err != nil {
+			fmt.Println(err)
+		}
+	}()
+
+	rows, err := f.GetRows("Sheet1")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	for _, row := range rows {
+
+		deviceTypeIndex := 0
+
+		for i := 0; i < len(listOfDeviceTypeName); i++ {
+			//fmt.Println("Checking Type: " + listOfDeviceTypeName[i] + " == " + row[6])
+			if strings.Contains(listOfDeviceTypeName[i], row[6]) {
+				deviceTypeIndex = i
+				break
+			}
+		}
+
+		deviceRoleIndex := 0
+
+		for i := 0; i < len(listOfDeviceRoleName); i++ {
+			//fmt.Println("Checking Role: " + listOfDeviceRoleName[i] + " == " + row[4])
+			if strings.Contains(listOfDeviceRoleName[i], row[4]) {
+				deviceRoleIndex = i
+				break
+			}
+		}
+
+		deviceSiteIndex := 0
+
+		for i := 0; i < len(listOfDeviceSiteName); i++ {
+			//fmt.Println("Checking Site: " + listOfDeviceSiteName[i] + " == " + row[5])
+			if strings.Contains(listOfDeviceSiteName[i], row[5]) {
+				deviceSiteIndex = i
+				break
+			}
+		}
+
+		deviceTenantIndex := 0
+
+		for i := 0; i < len(listOfTenantName); i++ {
+			//fmt.Println("Checking Tenant: " + listOfTenantName[i] + " == " + row[2])
+			if strings.Contains(listOfTenantName[i], row[2]) {
+				deviceTenantIndex = i
+				break
+			}
+		}
+
+		deviceManufacturerIndex := 0
+
+		for i := 0; i < len(listOfDeviceManufacturerName); i++ {
+			//fmt.Println("Checking Manu: " + listOfDeviceManufacturerName[i] + " == " + row[3])
+			if strings.Contains(listOfDeviceManufacturerName[i], row[3]) {
+				deviceManufacturerIndex = i
+				break
+			}
+		}
+
+		if deviceManufacturerIndex == 0 || deviceRoleIndex == 0 || deviceSiteIndex == 0 || deviceTenantIndex == 0 || deviceTypeIndex == 0 {
+			continue
+		}
+
+		deviceData := DeviceRequest{
+			Name:         row[0],
+			DeviceType:   listOfDeviceType[deviceTypeIndex],
+			DeviceRole:   listOfDeviceRole[deviceRoleIndex],
+			Site:         listOfDeviceSite[deviceSiteIndex],
+			Tenant:       int(listOfTenant[deviceTenantIndex].Id),
+			Manufacturer: listOfDeviceManufacturer[deviceManufacturerIndex],
+			Status:       "active", // Device status
+			Serial:       row[1],   // Serial number
+		}
+
+		// Convert the device data to JSON
+		jsonData, err := json.Marshal(deviceData)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error marshalling device data: %v\n", err)
+			return
+		}
+
+		// NetBox API URL to create a new device
+		apiUrl := inputDomainLogIn + "/api/dcim/devices/"
+
+		// Create an HTTP POST request with the device data
+		req, err := http.NewRequestWithContext(context.Background(), "POST", apiUrl, bytes.NewBuffer(jsonData))
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error creating request: %v\n", err)
+			return
+		}
+
+		req.Header.Set("Authorization", "Token "+inputAPITokenLogIn)
+		req.Header.Set("Content-Type", "application/json")
+
+		// Send the request
+		client := &http.Client{}
+		resp, err := client.Do(req)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error creating device: %v\n", err)
+			return
+		}
+		defer resp.Body.Close()
+
+		// Check if the device was created successfully
+		if resp.StatusCode != http.StatusCreated {
+			// Print detailed error message from the response
+			body, _ := io.ReadAll(resp.Body)
+			fmt.Fprintf(os.Stderr, "Error: HTTP %v\nResponse: %s\n", resp.Status, string(body))
+			return
+		}
+
+		fmt.Println("Device created successfully!")
+	}
+
+	resetRefreshTimer()
 }
 
 func logIn() {
@@ -988,6 +1239,8 @@ func loop() {
 				imgui.Button("Add New Device").OnClick(func() {
 					showEnterDeviceWindow = true
 				}),
+				imgui.Button("Predict New Device Location").OnClick(predictDevice),
+				imgui.Button("Import New Devices From CSV").OnClick(importDeviceFromCSV),
 				imgui.Button("Refresh Device List").OnClick(resetRefreshTimer),
 				imgui.InputText(&inputDeviceToSearchString).Label("Input Device To Search").Size(300),
 			),

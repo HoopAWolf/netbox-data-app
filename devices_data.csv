@@ -1,0 +1,51 @@
+Name,Type,Site,Tenant,Label
+MyAppServerThatHasARackButNoRU,Flex system,{DM-Syracuse},{},Office
+PP:B117,48-Pair Fiber Panel,{MDF},{NC State University},Office
+PP:B118,48-Pair Fiber Panel,{MDF},{NC State University},Office
+PP:B128,48-Pair Fiber Panel,{MDF},{NC State University},Office
+PP:MDF,48-Pair Fiber Panel,{Butler Communications},{NC State University},Office
+PP:MDF,48-Pair Fiber Panel,{D. S. Weaver Labs},{NC State University},Office
+PP:MDF,48-Pair Fiber Panel,{Grinnells Lab},{NC State University},Office
+dmi01-akron-pdu01,AP7901,{DM-Akron},"{Dunder-Mifflin, Inc.}",Office
+dmi01-akron-rtr01,ISR 1111-8P,{DM-Akron},"{Dunder-Mifflin, Inc.}",Office
+dmi01-akron-sw01,C9200-48P,{DM-Akron},"{Dunder-Mifflin, Inc.}",IDC
+dmi01-albany-pdu01,AP7901,{DM-Albany},"{Dunder-Mifflin, Inc.}",Office
+dmi01-albany-rtr01,ISR 1111-8P,{DM-Albany},"{Dunder-Mifflin, Inc.}",Office
+dmi01-albany-sw01,C9200-48P,{DM-Albany},"{Dunder-Mifflin, Inc.}",Office
+dmi01-binghamton-pdu01,AP7901,{DM-Binghamton},"{Dunder-Mifflin, Inc.}",IDC
+dmi01-binghamton-rtr01,ISR 1111-8P,{DM-Binghamton},"{Dunder-Mifflin, Inc.}",IDC
+dmi01-binghamton-sw01,C9200-48P,{DM-Binghamton},"{Dunder-Mifflin, Inc.}",Office
+dmi01-buffalo-pdu01,AP7901,{DM-Buffalo},"{Dunder-Mifflin, Inc.}",Office
+dmi01-buffalo-rtr01,ISR 1111-8P,{DM-Buffalo},"{Dunder-Mifflin, Inc.}",Office
+dmi01-buffalo-sw01,C9200-48P,{DM-Buffalo},"{Dunder-Mifflin, Inc.}",IDC
+dmi01-camden-pdu01,AP7901,{DM-Camden},"{Dunder-Mifflin, Inc.}",Office
+dmi01-camden-rtr01,ISR 1111-8P,{DM-Camden},"{Dunder-Mifflin, Inc.}",Office
+dmi01-camden-sw01,C9200-48P,{DM-Camden},"{Dunder-Mifflin, Inc.}",Office
+dmi01-nashua-pdu01,AP7901,{DM-Nashua},"{Dunder-Mifflin, Inc.}",Office
+dmi01-nashua-rtr01,ISR 1111-8P,{DM-Nashua},"{Dunder-Mifflin, Inc.}",Office
+dmi01-nashua-sw01,C9200-48P,{DM-Nashua},"{Dunder-Mifflin, Inc.}",IDC
+dmi01-pittsfield-pdu01,AP7901,{DM-Pittsfield},"{Dunder-Mifflin, Inc.}",Office
+dmi01-pittsfield-rtr01,ISR 1111-8P,{DM-Pittsfield},"{Dunder-Mifflin, Inc.}",Warehouse
+dmi01-pittsfield-sw01,C9200-48P,{DM-Pittsfield},"{Dunder-Mifflin, Inc.}",Warehouse
+dmi01-rochester-pdu01,AP7901,{DM-Rochester},"{Dunder-Mifflin, Inc.}",Warehouse
+dmi01-rochester-rtr01,ISR 1111-8P,{DM-Rochester},"{Dunder-Mifflin, Inc.}",IDC
+dmi01-rochster-sw01,C9200-48P,{DM-Rochester},"{Dunder-Mifflin, Inc.}",Office
+dmi01-scranton-pdu01,AP7901,{DM-Scranton},"{Dunder-Mifflin, Inc.}",Office
+dmi01-scranton-rtr01,ISR 1111-8P,{DM-Scranton},"{Dunder-Mifflin, Inc.}",Office
+dmi01-scranton-sw01,C9200-48P,{DM-Scranton},"{Dunder-Mifflin, Inc.}",Office
+dmi01-stamford-pdu01,AP7901,{DM-Stamford},"{Dunder-Mifflin, Inc.}",Warehouse
+dmi01-stamford-rtr01,ISR 1111-8P,{DM-Stamford},"{Dunder-Mifflin, Inc.}",Office
+dmi01-stamford-sw01,C9200-48P,{DM-Stamford},"{Dunder-Mifflin, Inc.}",Warehouse
+dmi01-syracuse-pdu01,AP7901,{DM-Syracuse},"{Dunder-Mifflin, Inc.}",Warehouse
+dmi01-syracuse-rtr01,ISR 1111-8P,{DM-Syracuse},"{Dunder-Mifflin, Inc.}",Warehouse
+dmi01-syracuse-sw01,C9200-48P,{DM-Syracuse},"{Dunder-Mifflin, Inc.}",Office
+dmi01-utica-pdu01,AP7901,{DM-Utica},"{Dunder-Mifflin, Inc.}",Office
+dmi01-utica-rtr01,ISR 1111-8P,{DM-Utica},"{Dunder-Mifflin, Inc.}",Office
+dmi01-utica-sw01,C9200-48P,{DM-Utica},"{Dunder-Mifflin, Inc.}",Office
+dmi01-yonkers-pdu01,AP7901,{DM-Yonkers},"{Dunder-Mifflin, Inc.}",Office
+dmi01-yonkers-rtr01,ISR 1111-8P,{DM-Yonkers},"{Dunder-Mifflin, Inc.}",Office
+dmi01-yonkers-sw01,C9200-48P,{DM-Yonkers},"{Dunder-Mifflin, Inc.}",IDC
+ncsu-coreswitch1,EX9214,{MDF},{NC State University},Office
+ncsu-coreswitch2,EX9214,{MDF},{NC State University},Office
+ncsu117-distswitch1,QFX5110-48S-4C,{D. S. Weaver Labs},{NC State University},Office
+ncsu118-distswitch1,QFX5110-48S-4C,{Grinnells Lab},{NC State University},Office
